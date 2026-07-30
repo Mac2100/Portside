@@ -170,7 +170,7 @@ struct ContainerDetailView: View {
                         appState.openWebUI(for: container, port: port.PublicPort)
                     } label: {
                         HStack {
-                            Text("\(port.IP ?? "0.0.0.0"):\(port.PublicPort ?? 0) → \(port.PrivatePort)/\(port.kind ?? "tcp")")
+                            Text(verbatim: "\(port.IP ?? "0.0.0.0"):\(port.PublicPort ?? 0) → \(port.PrivatePort)/\(port.kind ?? "tcp")")
                                 .font(.system(size: 11, design: .monospaced))
                             Image(systemName: "arrow.up.right")
                                 .font(.system(size: 8))

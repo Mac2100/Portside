@@ -151,7 +151,7 @@ struct HostsSettings: View {
             Text(host.name)
                 .font(.system(size: 12, weight: .medium))
                 .frame(width: 110, alignment: .leading)
-            Text("\(host.host):\(host.port)")
+            Text(verbatim: "\(host.host):\(host.port)")
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(.secondary)
             Spacer()
