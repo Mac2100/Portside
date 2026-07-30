@@ -1,15 +1,15 @@
-# Dependencies & build output
-node_modules/
+# Swift package manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Build output
 dist/
 
-# ⚠️ TLS certificates — NEVER commit these. They are the keys to your NAS.
-certs/*.pem
-certs/*.key
-certs/*.crt
+# Xcode
+xcuserdata/
+DerivedData/
 
 # Local junk
 .DS_Store
 *.log
-npm-debug.log*
-shot*.png
-splash*.png

@@ -1,133 +1,90 @@
-<p align="center">
-  <img src="docs/logo.png" width="140" alt="Portside logo">
-</p>
+# Portside
 
-<h1 align="center">Portside</h1>
+An open-source, native **macOS** app for managing Docker on your NAS — or any TLS-enabled Docker host — built with SwiftUI.
 
-<p align="center">
-  A native-feeling macOS app for managing Docker on your QNAP NAS<br>
-  (or any TLS-enabled Docker host). Built for home labs, by a home labber.
-</p>
+Portside talks to the Docker Engine API directly from your Mac over mutual TLS: the host's certificate chain is verified against the CA you import, your client certificate authenticates every request, and nothing passes through an intermediary server. It was built for QNAP Container Station, and works with any `dockerd` running with `--tlsverify`.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-blue" alt="platform">
-  <img src="https://img.shields.io/badge/built%20with-Electron-9feaf9" alt="electron">
-  <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-orange" alt="license">
-  <img src="https://img.shields.io/badge/code%20written%20by%20me-0%25-red" alt="vibe coded">
-  <img src="https://img.shields.io/badge/vibes-100%25-purple" alt="vibes">
-</p>
+![Portside icon](Resources/icon_1024.png)
 
----
+> Not affiliated with Docker, Inc. or QNAP Systems, Inc.
 
-## ⚠️ Full disclosure: I am not a programmer
+## Features
 
-This entire app was **vibe coded with Claude** (Anthropic's AI). I'm an IT guy with a
-QNAP NAS, a pile of *arr containers, and opinions about UI — not a developer. I described
-what I wanted, Claude wrote literally every line, tested it against my actual NAS, and we
-went back and forth until it felt like a real Mac app.
+- **Dashboard** — host CPU / memory rings, container counts, live network throughput, and history charts (Live / 24h / 7d, persisted across launches), plus top-consumer leaderboards that jump straight to the container.
+- **Insights** — an action list, not a metrics feed: crashes with exit codes, restart loops, failing health checks, pending updates, and reclaimable disk space. Only durable, actionable conditions appear — nothing that flaps in and out on its own. When there's nothing to do, it says so.
+- **Containers** — a card grid (with live CPU sparklines) or a compact list. Compose projects group automatically into **stacks** with stack-wide start / stop / restart; manual groups, per-container nicknames, colors, and icons are saved locally.
+- **Bulk actions** — select any set of containers and start, stop, restart, group, or remove them in one confirmed step.
+- **Detail inspector** — live stats, ports (click to open in the browser), mounts, and every action — edit, export, deploy, remove — in a side panel.
+- **Live logs** — streaming with ANSI colors, pause, search, and export to a file.
+- **Terminal** — a real xterm-256color console (`docker exec`) into any running container, over the hijacked TLS stream.
+- **File browser** — browse mapped volumes (or the full container filesystem), download, upload, and **edit config files in-app** via the Docker archive API.
+- **Deploy wizard** — pull an image and create a container with ports, volumes, environment, restart policy, and resource limits. Or **import a docker-compose file**: services are previewed, created, and grouped as a stack.
+- **Image update checker** — compares your containers' image digests against the registry (with proper bearer-token auth). One click pulls the new image and recreates the container — configuration preserved, automatic rollback on failure. Optional per-container **auto-update**.
+- **Container export** — rebuild any container anywhere: export its live configuration as `compose.yml` or a `docker run` command.
+- **Resource pages** — images, volumes, and networks show what's in use vs. unused vs. dangling, with per-object delete and a cleanup sheet that shows real reclaimable sizes. Destroying data always requires typing the name.
+- **Crash log snapshots** — when a container dies, its logs are captured at that moment, so the evidence survives the container being recreated.
+- **GitHub watch & Git Deploy** — watch repos for releases and commits; linked containers can pull a bind-mounted app folder from GitHub and restart — on demand, immediately on push, or nightly. Rollback to any recent commit.
+- **Notification rules** — choose exactly which events interrupt you: crash, stop, unhealthy, restart loop, image update, GitHub activity, expiring certificates.
+- **Multi-host** — manage several Docker hosts, each with its own TLS certificates, and switch between them from the sidebar.
+- **Menu bar companion** — live rings, a CPU sparkline, and per-container quick actions in the menu bar; the app keeps monitoring (and notifying) with the window closed.
+- **Command palette** — ⌘K to jump to any page or act on any container.
+- **One-click updates** — optional check against GitHub Releases at launch plus "Check for Updates…" in the app menu; installing an update downloads, swaps the app in place, and relaunches automatically.
+- **Themes** — six accent themes and a System / Light / Dark appearance override.
+- **Local-only credentials** — registry credentials and the GitHub token are stored exclusively in the macOS Keychain; TLS keys never leave your machine.
 
-I wanted Portainer-style container management without opening a browser tab, plus the
-stuff Container Station refuses to do nicely. Now it exists, and since it's genuinely
-become my daily driver, I figured I'd share it.
+## Installation
 
-**What that means for you:** it works great on my setup (QNAP QTS 5.x, Container Station,
-~22 containers, Apple Silicon Mac). Beyond that — read the code, trust nothing, file
-issues, and keep your expectations calibrated to "a guy and his AI made this in a day." 😄
+### Download
 
-## What it does
+Grab the latest `Portside-x.y.z.dmg` from [Releases](https://github.com/Mac2100/Portside/releases), open it, and drag **Portside** into **Applications**.
 
-- 📊 **Dashboard** — host CPU/memory rings, network throughput, live history charts (Live / 24h / 7d, persisted to disk), top-consumer leaderboards
-- 💡 **Insights** — an action list, not a metrics feed: crashes with exit codes, restart loops, failing health checks, pending updates, and reclaimable junk. Nothing that appears and vanishes on its own
-- 🧱 **Stacks** — compose projects are grouped automatically from their labels, with start/stop/restart for the whole stack
-- ☑️ **Bulk actions** — select any set of containers and start/stop/restart/remove them in one go
-- 📦 **Export** — rebuild any container anywhere: export its live config as `compose.yml` or a `docker run` command
-- 🧹 **Resource pages** — images, volumes and networks show what's *in use* vs *unused* vs *dangling*, with per-object delete (not just all-or-nothing prune)
-- 🎚 **Resource limits** — set a memory cap and CPU quota when deploying or editing, so one runaway container can't take the NAS down
-- 🔔 **Notification rules** — choose exactly which events interrupt you (crash, unhealthy, restart loop, image update, GitHub release, expiring certs)
-- 💥 **Crash logs** — when a container dies, Portside snapshots its logs *at that moment*, so the evidence survives the container being recreated
-- 🔑 **Private registries** — credentials stored in your Keychain, for private images and to lift Docker Hub's anonymous pull limit
-- ⬆️ **Image update checker** — compares your containers' image digests against the registry (built-in Watchtower, but you stay in control) with one-click pull & recreate + rollback
-- >_ **Terminal** — exec into any running container, full xterm with colors
-- 📁 **File Browser** — browse mapped volumes (or the full container fs), download, upload, and **edit config files in-app**
-- 🚀 **Deploy wizard** — pull an image and create a container with ports/volumes/env/restart policy, no YAML required
-- 📜 **Live logs** — streaming with ANSI colors, pause, and search
-- ☷ **Activity feed** — real-time Docker events (starts, stops, crashes, pulls)
-- 🖥 **Multi-host** — manage several Docker hosts, each with its own TLS certs
-- 📍 **Menu bar companion** — graphical popover with rings, sparkline and per-container actions; the app keeps monitoring (and notifying) with the window closed
-- 🌐 **Web UI buttons** — one click opens any container's web interface
-- 🎨 Dark / light / system themes, four logo colorways, autostart, startup animation
+> **Note on Gatekeeper:** releases are ad-hoc signed (no paid Apple Developer certificate), so the first launch requires right-clicking the app → **Open**, or:
+> ```bash
+> xattr -d com.apple.quarantine /Applications/Portside.app
+> ```
 
-## Screenshots
+### Build from source
 
-| Dashboard | File Browser |
-|---|---|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![File Browser](docs/screenshots/file-browser.png) |
-
-<p align="center">
-  <img src="docs/screenshots/menubar-popover.png" width="320" alt="Menu bar companion">
-</p>
-
-## Install
-
-1. Grab the latest `.dmg` from [**Releases**](https://github.com/Mac2100/portside/releases)
-2. Drag **Portside** to Applications
-3. First launch: **right-click → Open** (it's unsigned — I'm not paying Apple $99/year for a hobby project, sorry)
-4. Settings → add your host's IP and import your TLS certificates
-
-> Apple Silicon only for now. Intel Mac users can build from source with `npm run build`.
-
-### Getting your QNAP certificates
-
-Container Station → **Preferences → Docker Certificate → Download**. Unzip it — you get
-`ca.pem`, `cert.pem` and `key.pem`. Import all three via **Settings → TLS Certificates**
-(per-host import supported). Also make sure Container Station's Docker API (port 2376) is enabled.
-
-Any other Docker host with TLS (`dockerd` with `--tlsverify`) works the same way.
-
-## Build from source
+Requires Xcode 15+ / Swift 5.9+ on macOS 14 or later.
 
 ```bash
-git clone https://github.com/Mac2100/portside.git
-cd portside
-npm install
-npm start          # run it
-npm run build      # build the .app / .dmg into dist/
+git clone https://github.com/Mac2100/Portside.git
+cd Portside
+./scripts/make_app.sh          # produces dist/Portside.app and dist/Portside-<version>.dmg
 ```
 
-## How it works (as explained to me)
+For development, `swift run` works directly, or open `Package.swift` in Xcode.
 
-Plain Electron — no frameworks, no build step, a main process that talks to the Docker
-Engine API directly over TLS (the host's certificate is verified against your imported
-`ca.pem`, so Portside can tell your NAS from anything else answering on that address).
-Terminal sessions use the exec API with a hijacked TCP stream, the file browser rides the
-archive API with a hand-rolled tar parser, and the update checker does registry digest
-comparisons with proper bearer-token auth. The menu bar panel is a frameless vibrancy
-window. Your certs, registry credentials and config never leave your machine.
+## Connecting to your host
 
-```
-main.js          Electron main process — all Docker API calls, TLS, IPC handlers
-preload.js       the contextBridge: the only surface the UI can reach
-index.html       markup only
-css/app.css      all styles
-js/NN-*.js       the renderer, loaded in order; plain scripts sharing one scope
-test/            npm test — smoke test (no deps) + jsdom boot test
-```
+### QNAP Container Station
 
-`npm test` parses every renderer script, checks that every `$('id')` resolves, then boots
-the whole UI in jsdom against a fake Docker host and asserts the pages render. It's what
-stands between me and shipping a white window.
+1. In Container Station, enable the Docker API: **Preferences → Docker Certificate**, and make sure port **2376** is on.
+2. Download the certificate bundle (**Preferences → Docker Certificate → Download**) and unzip it — you get `ca.pem`, `cert.pem`, and `key.pem`.
+3. In Portside: **Settings → Hosts**, add the NAS by IP, then **Import certificates…** and select all three files.
 
-## Disclaimers
+### Any other Docker host
 
-- Not affiliated with Docker, QNAP, Portainer, or the *arr projects
-- The container update feature recreates containers (config and volumes are preserved, old container logs are not)
-- An AI wrote this. A human (me) merely yelled directions and clicked "yes". Review the code before trusting it with anything important — it's a few thousand lines and honestly pretty readable
+Any `dockerd` started with `--tlsverify --tlscacert --tlscert --tlskey` works the same way — add the host and import the matching client certificates. Per-host certificate sets are supported for multi-host setups.
+
+Portside verifies the host's certificate chain against the imported `ca.pem`. Because NAS certificates are typically issued to the device's hostname while you connect by IP, only the hostname check is waived — the chain, signature, and validity are always verified.
+
+## Security & privacy
+
+- TLS client certificates and keys stay on disk in the app's support folder; registry credentials and the GitHub token are stored **only** in the macOS Keychain.
+- Every Docker API request goes **directly** from your Mac to your host over mutual TLS — there is no intermediary server and no telemetry.
+- The only other network requests are registry digest lookups for the update checker, the GitHub API for watched repos, and the (optional, off-switchable) update check against the public GitHub Releases API.
+
+## Upgrading from Portside 2.x
+
+V3 is a full native rewrite of the earlier Electron app. It reads the same configuration file and certificate layout, so hosts, groups, container customizations, notification rules, and watch lists carry over automatically on first launch. Registry credentials and the Git Deploy token need to be re-entered once (they move into the Keychain).
+
+## CI / Releases
+
+Every push and pull request builds the app and uploads a DMG artifact via GitHub Actions. Pushing a tag like `v3.1.0` additionally creates a GitHub Release with the DMG attached — which is what the in-app update checker looks at.
+
+To cut a release: bump `AppVersion.marketing` in `Sources/Portside/Support/AppVersion.swift`, then tag the commit `v<version>` and push the tag.
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE) — free for personal use, home labs, hobby
-projects, education, and nonprofits. If you want to use Portside **commercially**
-(sell it, bundle it, build a paid product on it), that requires my permission —
-open an issue or get in touch.
-
-Translation: enjoy it at home, but if you make a million bucks off it, I'd like to hear about it first. 😄
+[MIT](LICENSE)
