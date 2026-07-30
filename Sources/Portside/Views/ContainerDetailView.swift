@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The inspector column shown next to the container list.
@@ -7,6 +8,7 @@ struct ContainerDetailView: View {
     var onEdit: () -> Void
 
     @State private var stats: ContainerStatsSample.Computed?
+    @State private var details: ContainerDetails?
     @State private var exportTarget: ContainerSummary?
     @State private var gitDeployTarget: ContainerSummary?
     @State private var confirmRemove = false
@@ -27,6 +29,7 @@ struct ContainerDetailView: View {
                 infoSection
                 portsSection
                 mountsSection
+                environmentSection
             }
             .padding(14)
         }
@@ -47,6 +50,7 @@ struct ContainerDetailView: View {
     }
 
     private func loadStats() async {
+        details = try? await appState.client?.inspect(id: container.Id)
         while !Task.isCancelled {
             if container.isRunning, let client = appState.client,
                let sample = try? await client.stats(id: container.Id) {
@@ -149,7 +153,25 @@ struct ContainerDetailView: View {
         VStack(alignment: .leading, spacing: 6) {
             sectionTitle("Info")
             detailRow("Image", container.Image ?? "—", monospaced: true)
-            detailRow("ID", String(container.Id.prefix(24)), monospaced: true)
+            HStack(alignment: .top) {
+                Text("ID")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 64, alignment: .leading)
+                Text(String(container.Id.prefix(12)))
+                    .font(.system(size: 11, design: .monospaced))
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(container.Id, forType: .string)
+                    ToastCenter.shared.show("Container ID copied")
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 9))
+                }
+                .buttonStyle(.borderless)
+                .help("Copy the full container ID")
+                Spacer(minLength: 0)
+            }
             detailRow("Created", Format.relative(container.Created))
             detailRow("Status", container.Status ?? "—")
             if let project = container.composeProject {
@@ -201,6 +223,26 @@ struct ContainerDetailView: View {
                             .lineLimit(1)
                             .truncationMode(.head)
                     }
+                }
+            }
+            .glassCard(padding: 12)
+        }
+    }
+
+    @ViewBuilder
+    private var environmentSection: some View {
+        let env = (details?.Config?.Env ?? []).sorted()
+        if !env.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                sectionTitle("Environment (\(env.count))")
+                ForEach(env, id: \.self) { entry in
+                    Text(entry)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(entry)
                 }
             }
             .glassCard(padding: 12)

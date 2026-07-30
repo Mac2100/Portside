@@ -106,11 +106,13 @@ struct InsightsView: View {
             HStack(spacing: 6) {
                 Label(title, systemImage: symbol)
                     .font(.headline)
+                let worst = items.map(\.severity).min() ?? .info
                 Text("\(items.count)")
                     .font(.caption.weight(.semibold))
+                    .foregroundStyle(worst.color)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1)
-                    .background(.quaternary.opacity(0.6), in: Capsule())
+                    .background(worst.color.opacity(0.14), in: Capsule())
                 Spacer()
                 if !meta.isEmpty {
                     Text(meta)
@@ -198,10 +200,16 @@ struct InsightRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
+            // Severity is the first thing the eye should hit: a colored bar,
+            // then the glyph, then the words.
+            RoundedRectangle(cornerRadius: 2)
+                .fill(item.severity.color.opacity(0.85))
+                .frame(width: 3)
+                .padding(.vertical, 1)
             Image(systemName: item.symbol)
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(item.severity.color)
-                .frame(width: 26)
+                .frame(width: 24)
                 .padding(.top, 1)
 
             VStack(alignment: .leading, spacing: 3) {
