@@ -201,26 +201,68 @@ final class ConfigStore: ObservableObject {
         }
     }
 
-    /// Classifies and copies imported PEM files into place. Returns the target
-    /// file names written, and any of the three that are still missing.
+    /// The directory the Settings status panel should display: the per-host
+    /// set as soon as it contains *any* of the three files (so imports are
+    /// visible immediately, even while incomplete), otherwise the shared set.
+    static func displayCertsDirectory(forHostID hostID: String?) -> (url: URL, isHostSpecific: Bool) {
+        let root = supportDirectory.appendingPathComponent("certs", isDirectory: true)
+        if let hostID {
+            let hostDir = root.appendingPathComponent(hostID, isDirectory: true)
+            let hasAny = ["ca.pem", "cert.pem", "key.pem"].contains {
+                FileManager.default.fileExists(atPath: hostDir.appendingPathComponent($0).path)
+            }
+            if hasAny { return (hostDir, true) }
+        }
+        return (root, false)
+    }
+
+    /// Classifies and copies imported PEM files into place. Folders (e.g. the
+    /// unzipped Container Station bundle) are expanded to the certificate
+    /// files inside them. Returns the target file names written, and any of
+    /// the three that are still missing.
     static func importCertificates(files: [URL], hostID: String?) throws -> (placed: [String], missing: [String]) {
         let root = supportDirectory.appendingPathComponent("certs", isDirectory: true)
         let directory = hostID.map { root.appendingPathComponent($0, isDirectory: true) } ?? root
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
-        var placed: [String] = []
+        var expanded: [URL] = []
         for file in files {
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: file.path, isDirectory: &isDirectory),
+               isDirectory.boolValue {
+                let children = (try? FileManager.default.contentsOfDirectory(
+                    at: file, includingPropertiesForKeys: nil
+                )) ?? []
+                expanded.append(contentsOf: children.filter {
+                    ["pem", "crt", "cer", "key"].contains($0.pathExtension.lowercased())
+                })
+            } else {
+                expanded.append(file)
+            }
+        }
+        guard !expanded.isEmpty else {
+            throw SimpleError("No certificate files found — select ca.pem, cert.pem and key.pem (or the folder containing them).")
+        }
+
+        var placed: [String] = []
+        for file in expanded {
             let content = try String(contentsOf: file, encoding: .utf8)
+            let name = file.lastPathComponent.lowercased()
             let target: String
             if content.contains("PRIVATE KEY") {
                 target = "key.pem"
             } else if TLSIdentity.pemBlock(in: content, types: ["CERTIFICATE"]) != nil {
-                // The CA is self-issued (subject == issuer, or marked CA); a leaf
-                // certificate is anything else. Docker's generated ca.pem is
-                // always self-signed, so compare via trust evaluation shortcut:
-                // if the certificate verifies against itself, treat it as the CA.
-                let isCA = Self.looksLikeCA(pem: content)
-                target = isCA ? "ca.pem" : "cert.pem"
+                // The Container Station bundle names its files ca.pem and
+                // cert.pem — the filename is the most reliable signal, so it
+                // wins. Content-based self-signed detection is only the
+                // fallback for files named something else.
+                if name.hasPrefix("ca") || name.contains("root") {
+                    target = "ca.pem"
+                } else if name.hasPrefix("cert") || name.contains("client") {
+                    target = "cert.pem"
+                } else {
+                    target = Self.looksLikeCA(pem: content) ? "ca.pem" : "cert.pem"
+                }
             } else {
                 throw SimpleError("\(file.lastPathComponent) is not a valid PEM certificate or key")
             }
