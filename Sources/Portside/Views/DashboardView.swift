@@ -47,6 +47,13 @@ struct DashboardView: View {
 
     private var running: [ContainerSummary] { appState.containers.filter(\.isRunning) }
 
+    /// Jumps to the container list pre-sorted by the tapped metric.
+    private func openContainers(sortedBy key: String) {
+        UserDefaults.standard.set(key, forKey: "containerSortKey")
+        UserDefaults.standard.set(false, forKey: "containerSortAscending")
+        appState.page = .containers
+    }
+
     private var metricsRow: some View {
         HStack(spacing: 12) {
             MetricRingCard(
@@ -54,14 +61,16 @@ struct DashboardView: View {
                 value: String(format: "%.1f%%", appState.hostCPU),
                 subtitle: "\(appState.systemInfo?.NCPU ?? 0) cores · \(running.count) active",
                 percent: appState.hostCPU,
-                colorByLoad: true
+                colorByLoad: true,
+                action: { openContainers(sortedBy: "cpu") }
             )
             MetricRingCard(
                 title: "Memory",
                 value: Format.bytes(appState.hostMemUsed),
                 subtitle: "of \(Format.bytes(appState.systemInfo?.MemTotal ?? 0))",
                 percent: appState.hostMemPercent,
-                colorByLoad: true
+                colorByLoad: true,
+                action: { openContainers(sortedBy: "memory") }
             )
             MetricRingCard(
                 title: "Containers",
@@ -70,7 +79,8 @@ struct DashboardView: View {
                 percent: appState.containers.isEmpty
                     ? 0 : Double(running.count) / Double(appState.containers.count) * 100,
                 ringLabel: "\(running.count)/\(appState.containers.count)",
-                colorByLoad: false
+                colorByLoad: false,
+                action: { openContainers(sortedBy: "state") }
             )
             MetricPlainCard(
                 title: "Network",
@@ -152,70 +162,115 @@ struct DashboardView: View {
         title: String, now: String, points: [ChartPoint],
         percentDomain: Bool, colors: [String: Color]
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(now)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-            }
-            baseChart(points: points, colors: colors, percentDomain: percentDomain)
-                .frame(height: 120)
-        }
-        .frame(maxWidth: .infinity)
+        HistoryChartCard(
+            title: title, now: now, points: points,
+            percentDomain: percentDomain, colors: colors
+        )
     }
 
-    @ViewBuilder
-    private func baseChart(points: [ChartPoint], colors: [String: Color], percentDomain: Bool) -> some View {
-        let chart = Chart(points) { point in
-            LineMark(
-                x: .value("Time", point.time),
-                y: .value("Value", point.value),
-                series: .value("Series", point.series)
-            )
-            .foregroundStyle(colors[point.series] ?? .gray)
-            .interpolationMethod(.monotone)
-            .lineStyle(StrokeStyle(lineWidth: 1.5))
+    /// One history chart with scrubbing: hover or drag shows the value at
+    /// that point in time in the header, with a rule mark on the plot.
+    private struct HistoryChartCard: View {
+        var title: String
+        var now: String
+        var points: [ChartPoint]
+        var percentDomain: Bool
+        var colors: [String: Color]
 
-            AreaMark(
-                x: .value("Time", point.time),
-                y: .value("Value", point.value),
-                series: .value("Series", point.series),
-                stacking: .unstacked
-            )
-            .foregroundStyle(colors[point.series] ?? .gray)
-            .interpolationMethod(.monotone)
-            .opacity(0.14)
+        @State private var selectedTime: Date?
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(title)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(headerValue)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(selectedTime == nil ? AnyShapeStyle(.primary) : AnyShapeStyle(Color.accentColor))
+                }
+                chartBody
+                    .frame(height: 120)
+            }
+            .frame(maxWidth: .infinity)
         }
-        .chartLegend(.hidden)
-        .chartYAxis {
-            AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
-                AxisGridLine().foregroundStyle(.quaternary)
-                AxisValueLabel {
-                    if let number = value.as(Double.self) {
-                        Text(percentDomain ? "\(Int(number))%" : Format.rate(number))
-                            .font(.system(size: 8))
+
+        /// Values of every series at the scrubbed time, or the live reading.
+        private var headerValue: String {
+            guard let selectedTime else { return now }
+            let bySeries = Dictionary(grouping: points, by: \.series)
+            let parts: [String] = bySeries.keys.sorted().compactMap { series in
+                guard let nearest = bySeries[series]?.min(by: {
+                    abs($0.time.timeIntervalSince(selectedTime)) < abs($1.time.timeIntervalSince(selectedTime))
+                }) else { return nil }
+                let value = percentDomain
+                    ? String(format: "%.1f%%", nearest.value)
+                    : Format.rate(nearest.value)
+                return bySeries.count > 1 ? "\(series == "Down" ? "↓" : "↑")\(value)" : value
+            }
+            let time = selectedTime.formatted(date: .omitted, time: .shortened)
+            return "\(time) · \(parts.joined(separator: " "))"
+        }
+
+        @ViewBuilder
+        private var chartBody: some View {
+            let chart = Chart {
+                ForEach(points) { point in
+                    LineMark(
+                        x: .value("Time", point.time),
+                        y: .value("Value", point.value),
+                        series: .value("Series", point.series)
+                    )
+                    .foregroundStyle(colors[point.series] ?? .gray)
+                    .interpolationMethod(.monotone)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+
+                    AreaMark(
+                        x: .value("Time", point.time),
+                        y: .value("Value", point.value),
+                        series: .value("Series", point.series),
+                        stacking: .unstacked
+                    )
+                    .foregroundStyle(colors[point.series] ?? .gray)
+                    .interpolationMethod(.monotone)
+                    .opacity(0.14)
+                }
+                if let selectedTime {
+                    RuleMark(x: .value("Time", selectedTime))
+                        .foregroundStyle(.secondary.opacity(0.55))
+                        .lineStyle(StrokeStyle(lineWidth: 1))
+                }
+            }
+            .chartXSelection(value: $selectedTime)
+            .chartLegend(.hidden)
+            .chartYAxis {
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                    AxisGridLine().foregroundStyle(.quaternary)
+                    AxisValueLabel {
+                        if let number = value.as(Double.self) {
+                            Text(percentDomain ? "\(Int(number))%" : Format.rate(number))
+                                .font(.system(size: 8))
+                        }
                     }
                 }
             }
-        }
-        .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 3)) { value in
-                AxisValueLabel {
-                    if let date = value.as(Date.self) {
-                        Text(date, format: .dateTime.hour().minute())
-                            .font(.system(size: 8))
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 3)) { value in
+                    AxisValueLabel {
+                        if let date = value.as(Date.self) {
+                            Text(date, format: .dateTime.hour().minute())
+                                .font(.system(size: 8))
+                        }
                     }
                 }
             }
-        }
 
-        if percentDomain {
-            chart.chartYScale(domain: 0...100)
-        } else {
-            chart
+            if percentDomain {
+                chart.chartYScale(domain: 0...100)
+            } else {
+                chart
+            }
         }
     }
 
@@ -277,6 +332,22 @@ struct MetricRingCard: View {
     var percent: Double
     var ringLabel: String?
     var colorByLoad: Bool
+    var action: (() -> Void)?
+
+    @State private var hovering = false
+
+    init(
+        title: String, value: String, subtitle: String, percent: Double,
+        ringLabel: String? = nil, colorByLoad: Bool, action: (() -> Void)? = nil
+    ) {
+        self.title = title
+        self.value = value
+        self.subtitle = subtitle
+        self.percent = percent
+        self.ringLabel = ringLabel
+        self.colorByLoad = colorByLoad
+        self.action = action
+    }
 
     private var ringColor: Color {
         guard colorByLoad else { return .green }
@@ -313,8 +384,18 @@ struct MetricRingCard: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
+            if action != nil {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .opacity(hovering ? 1 : 0.3)
+            }
         }
         .glassCard(padding: 14)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .onTapGesture { action?() }
+        .help(action != nil ? "Open the container list sorted by \(title.lowercased())" : "")
     }
 }
 
