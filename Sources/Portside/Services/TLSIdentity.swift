@@ -170,25 +170,29 @@ struct TLSIdentity {
     // MARK: - Identity assembly
 
     /// `SecIdentity` can only be minted by the keychain, so the certificate and
-    /// key are (re-)imported under an app-specific label and the matching
-    /// identity queried back. Items are replaced on every load so re-imported
-    /// certificates take effect immediately.
+    /// key are (re-)imported under an app-specific label, then paired via
+    /// `SecIdentityCreateWithCertificate` (the API built for exactly this).
+    /// Items are replaced on every load so re-imported certificates take
+    /// effect immediately.
     static func load(certsDirectory: URL) throws -> TLSIdentity {
         let ca = try certificate(fromPEMFile: certsDirectory.appendingPathComponent("ca.pem"))
         let cert = try certificate(fromPEMFile: certsDirectory.appendingPathComponent("cert.pem"))
         let key = try privateKey(fromPEMFile: certsDirectory.appendingPathComponent("key.pem"))
 
-        let label = "Portside Docker Client (\(certsDirectory.lastPathComponent))"
+        let label = "Portside Docker Client"
 
-        // Replace any previous copies of this identity's parts.
-        SecItemDelete([
-            kSecClass as String: kSecClassCertificate,
-            kSecAttrLabel as String: label
-        ] as CFDictionary)
-        SecItemDelete([
-            kSecClass as String: kSecClassKey,
-            kSecAttrLabel as String: label
-        ] as CFDictionary)
+        // Replace any previous copies of this identity's parts (including the
+        // per-directory labels earlier versions used).
+        for oldLabel in [label, "Portside Docker Client (\(certsDirectory.lastPathComponent))"] {
+            SecItemDelete([
+                kSecClass as String: kSecClassCertificate,
+                kSecAttrLabel as String: oldLabel
+            ] as CFDictionary)
+            SecItemDelete([
+                kSecClass as String: kSecClassKey,
+                kSecAttrLabel as String: oldLabel
+            ] as CFDictionary)
+        }
 
         let certAdd: [String: Any] = [
             kSecClass as String: kSecClassCertificate,
@@ -196,42 +200,50 @@ struct TLSIdentity {
             kSecAttrLabel as String: label
         ]
         let certStatus = SecItemAdd(certAdd as CFDictionary, nil)
-        guard certStatus == errSecSuccess || certStatus == errSecDuplicateItem else {
-            throw TLSError.identityFailed
-        }
 
         let keyAdd: [String: Any] = [
             kSecClass as String: kSecClassKey,
             kSecValueRef as String: key,
-            kSecAttrLabel as String: label
+            kSecAttrLabel as String: label,
+            kSecAttrIsPermanent as String: true
         ]
         let keyStatus = SecItemAdd(keyAdd as CFDictionary, nil)
-        guard keyStatus == errSecSuccess || keyStatus == errSecDuplicateItem else {
-            throw TLSError.identityFailed
+
+        // Preferred path: let the Security framework find the key matching
+        // this certificate and mint the identity.
+        var created: SecIdentity?
+        let pairStatus = SecIdentityCreateWithCertificate(nil, cert, &created)
+        if pairStatus == errSecSuccess, let created {
+            return TLSIdentity(identity: created, caCertificate: ca)
         }
 
-        // With both halves in the keychain, the identity query pairs them up.
+        // Fallback: enumerate identities and match on certificate bytes.
         var result: AnyObject?
         let query: [String: Any] = [
             kSecClass as String: kSecClassIdentity,
             kSecReturnRef as String: true,
             kSecMatchLimit as String: kSecMatchLimitAll
         ]
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let identities = result as? [SecIdentity] else {
-            throw TLSError.identityFailed
-        }
-
-        let certData = SecCertificateCopyData(cert) as Data
-        for candidate in identities {
-            var candidateCert: SecCertificate?
-            guard SecIdentityCopyCertificate(candidate, &candidateCert) == errSecSuccess,
-                  let candidateCert else { continue }
-            if SecCertificateCopyData(candidateCert) as Data == certData {
-                return TLSIdentity(identity: candidate, caCertificate: ca)
+        if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+           let identities = result as? [SecIdentity] {
+            let certData = SecCertificateCopyData(cert) as Data
+            for candidate in identities {
+                var candidateCert: SecCertificate?
+                guard SecIdentityCopyCertificate(candidate, &candidateCert) == errSecSuccess,
+                      let candidateCert else { continue }
+                if SecCertificateCopyData(candidateCert) as Data == certData {
+                    return TLSIdentity(identity: candidate, caCertificate: ca)
+                }
             }
         }
-        throw TLSError.identityFailed
+
+        // Carry the OSStatus codes so a failure pinpoints the broken step:
+        // cert/key are the keychain imports, pair is the identity creation.
+        throw SimpleError(
+            "Could not build a client identity from cert.pem and key.pem "
+            + "(cert: \(certStatus), key: \(keyStatus), pair: \(pairStatus)). "
+            + "Open Keychain Access, delete any \"Portside Docker Client\" items in the login keychain, and re-test."
+        )
     }
 
     /// Verifies a server trust chain against the imported CA, waiving only the
