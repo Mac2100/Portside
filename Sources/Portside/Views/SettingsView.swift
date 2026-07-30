@@ -112,7 +112,7 @@ struct HostsSettings: View {
             settingsSection("TLS certificates", subtitle: "From Container Station: Preferences → Docker Certificate → Download, then import the unzipped ca.pem, cert.pem and key.pem. Per-host certificates win over the shared set.") {
                 certificateStatus
                 HStack {
-                    Button("Import certificates…") { importCerts(hostID: appState.store.activeHost?.id) }
+                    Button("Import certificates…") { importCerts(hostID: nil) }
                     Button("Reset") {
                         ConfigStore.resetCertificates(hostID: appState.store.activeHost?.id)
                         ConfigStore.resetCertificates(hostID: nil)
@@ -210,12 +210,17 @@ struct HostsSettings: View {
 
     @ViewBuilder
     private var certificateStatus: some View {
-        let directory = ConfigStore.certsDirectory(forHostID: appState.store.activeHost?.id)
+        let display = ConfigStore.displayCertsDirectory(forHostID: appState.store.activeHost?.id)
         let _ = certInfoRefresh   // re-evaluate after import/reset
         VStack(alignment: .leading, spacing: 4) {
-            certRow("ca.pem", directory: directory)
-            certRow("cert.pem", directory: directory)
-            keyRow(directory: directory)
+            Text(display.isHostSpecific
+                 ? "Host-specific set (\(appState.store.activeHost?.name ?? ""))"
+                 : "Shared set (used by every host without its own certificates)")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.tertiary)
+            certRow("ca.pem", directory: display.url)
+            certRow("cert.pem", directory: display.url)
+            keyRow(directory: display.url)
         }
         .padding(10)
         .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
@@ -286,8 +291,10 @@ struct HostsSettings: View {
 
     private func importCerts(hostID: String?) {
         let panel = NSOpenPanel()
-        panel.title = "Select certificate files (ca.pem, cert.pem, key.pem)"
+        panel.title = "Select ca.pem, cert.pem and key.pem — or the folder containing them"
+        panel.message = "Select all three certificate files, or the unzipped folder from Container Station."
         panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = true
         guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
         do {
             let result = try ConfigStore.importCertificates(files: panel.urls, hostID: hostID)
