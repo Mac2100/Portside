@@ -3,7 +3,7 @@ import Foundation
 /// Single source of truth for the app version.
 /// `scripts/make_app.sh` extracts this value to stamp Info.plist and name the DMG.
 enum AppVersion {
-    static let marketing = "3.0.3"
+    static let marketing = "3.0.4"
 
     /// Prefers the bundle version when running from a built .app, falls back to
     /// the compiled-in constant when running via `swift run`.
