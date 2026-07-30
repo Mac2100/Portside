@@ -12,6 +12,14 @@ struct LogPanelView: View {
     @StateObject private var model = LogStreamModel()
     @State private var search = ""
 
+    // Explicit initializer: private @State/@StateObject storage would make the
+    // synthesized memberwise initializer private, and this view is created
+    // from another file.
+    init(containerID: String, containerName: String) {
+        self.containerID = containerID
+        self.containerName = containerName
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             Color.black.opacity(0.25)

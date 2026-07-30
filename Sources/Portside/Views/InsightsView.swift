@@ -351,6 +351,10 @@ struct VolumePruneSheet: View {
     @State private var phrase = ""
     @State private var working = false
 
+    init(request: VolumePruneRequest) {
+        self.request = request
+    }
+
     private let requiredPhrase = "delete volumes"
 
     var body: some View {

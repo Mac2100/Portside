@@ -11,6 +11,11 @@ struct ContainerDetailView: View {
     @State private var gitDeployTarget: ContainerSummary?
     @State private var confirmRemove = false
 
+    init(container: ContainerSummary, onEdit: @escaping () -> Void) {
+        self.container = container
+        self.onEdit = onEdit
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -320,6 +325,10 @@ struct EditContainerSheet: View {
     @State private var loading = true
     @State private var working = false
     @State private var confirmRecreate = false
+
+    init(container: ContainerSummary) {
+        self.container = container
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

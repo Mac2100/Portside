@@ -336,9 +336,14 @@ struct NetworkSummary: Identifiable, Decodable, Equatable {
     var Scope: String?
     var Internal: Bool?
     var Attachable: Bool?
-    var IPAM: IPAM?
+    var ipam: IPAM?
 
     var id: String { Id }
+
+    private enum CodingKeys: String, CodingKey {
+        case Id, Name, Driver, Scope, Internal, Attachable
+        case ipam = "IPAM"
+    }
 
     struct IPAM: Decodable, Equatable {
         var Config: [Config]?
@@ -348,7 +353,7 @@ struct NetworkSummary: Identifiable, Decodable, Equatable {
         }
     }
 
-    var subnet: String? { IPAM?.Config?.first?.Subnet }
+    var subnet: String? { ipam?.Config?.first?.Subnet }
 
     static let builtinNames: Set<String> = ["bridge", "host", "none"]
     var isBuiltin: Bool { Self.builtinNames.contains(Name) }

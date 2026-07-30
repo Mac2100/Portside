@@ -39,6 +39,7 @@ enum ImageUpdateService {
             )
         }
 
+        let containersByImage = byImage
         var results: [ImageUpdateResult] = []
         let images = Array(byImage.keys)
         for batch in stride(from: 0, to: images.count, by: 4).map({ Array(images[$0..<min($0 + 4, images.count)]) }) {
@@ -47,7 +48,7 @@ enum ImageUpdateService {
                     group.addTask {
                         await checkOne(
                             image: image,
-                            containers: byImage[image] ?? [],
+                            containers: containersByImage[image] ?? [],
                             client: client,
                             registries: registries
                         )
@@ -68,9 +69,9 @@ enum ImageUpdateService {
         client: DockerClient,
         registries: [RegistryCredential]
     ) async -> ImageUpdateResult {
-        let short = image.split(separator: "@").first.map(String.init)?
-            .split(separator: "/").last.map(String.init)?
-            .split(separator: ":").first.map(String.init) ?? image
+        let base = image.split(separator: "@").first.map(String.init) ?? image
+        let lastComponent = base.split(separator: "/").last.map(String.init) ?? base
+        let short = lastComponent.split(separator: ":").first.map(String.init) ?? lastComponent
         var result = ImageUpdateResult(
             image: image, shortName: short, containers: containers, updateAvailable: false
         )

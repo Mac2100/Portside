@@ -758,6 +758,11 @@ struct RemoveContainersSheet: View {
 
     @State private var acknowledged = false
 
+    init(names: [String], onConfirm: @escaping () -> Void) {
+        self.names = names
+        self.onConfirm = onConfirm
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label(

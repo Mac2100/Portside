@@ -233,7 +233,7 @@ struct HostsSettings: View {
                 if let expiry = summary.notValidAfter {
                     Text("\(summary.isExpired ? "EXPIRED" : "expires") \(expiry.formatted(date: .abbreviated, time: .omitted))")
                         .font(.system(size: 10))
-                        .foregroundStyle(summary.isExpired ? .red : .tertiary)
+                        .foregroundStyle(summary.isExpired ? Color.red : Color.secondary)
                 }
             } else {
                 Image(systemName: "xmark.circle.fill").foregroundStyle(.red)

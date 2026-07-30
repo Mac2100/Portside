@@ -262,7 +262,7 @@ struct TLSIdentity {
         let name = SecCertificateCopySubjectSummary(cert) as String? ?? "—"
 
         var expiry: Date?
-        var error: CFError?
+        var error: Unmanaged<CFError>?
         if let values = SecCertificateCopyValues(cert, [kSecOIDX509V1ValidityNotAfter] as CFArray, &error) as? [String: Any],
            let entry = values[kSecOIDX509V1ValidityNotAfter as String] as? [String: Any],
            let seconds = entry[kSecPropertyKeyValue as String] as? NSNumber {

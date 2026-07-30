@@ -172,24 +172,24 @@ struct DashboardView: View {
         let chart = Chart(points) { point in
             LineMark(
                 x: .value("Time", point.time),
-                y: .value("Value", point.value)
+                y: .value("Value", point.value),
+                series: .value("Series", point.series)
             )
-            .foregroundStyle(by: .value("Series", point.series))
+            .foregroundStyle(colors[point.series] ?? .gray)
             .interpolationMethod(.monotone)
             .lineStyle(StrokeStyle(lineWidth: 1.5))
 
             AreaMark(
                 x: .value("Time", point.time),
-                y: .value("Value", point.value)
+                y: .value("Value", point.value),
+                series: .value("Series", point.series),
+                stacking: .unstacked
             )
-            .foregroundStyle(by: .value("Series", point.series))
+            .foregroundStyle(colors[point.series] ?? .gray)
             .interpolationMethod(.monotone)
             .opacity(0.14)
         }
-        .chartForegroundStyleScale { (series: String) in
-            colors[series] ?? .gray
-        }
-        .chartLegend(colors.count > 1 ? .visible : .hidden)
+        .chartLegend(.hidden)
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
                 AxisGridLine().foregroundStyle(.quaternary)
