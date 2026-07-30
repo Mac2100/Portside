@@ -878,7 +878,7 @@ struct AboutSettings: View {
                 }
             }
 
-            BuyMeACoffeeButton()
+            SupportButtons()
                 .padding(.top, 4)
 
             if case .checking = appState.updates.status {

@@ -1,5 +1,7 @@
 # Portside
 
+[![Star on GitHub](https://img.shields.io/github/stars/Mac2100/Portside?style=flat&logo=github&label=Star)](https://github.com/Mac2100/Portside)
+
 An open-source, native **macOS** app for managing Docker on your NAS — or any TLS-enabled Docker host — built with SwiftUI.
 
 Portside talks to the Docker Engine API directly from your Mac over mutual TLS: the host's certificate chain is verified against the CA you import, your client certificate authenticates every request, and nothing passes through an intermediary server. It was built for QNAP Container Station, and works with any `dockerd` running with `--tlsverify`.
@@ -87,7 +89,9 @@ To cut a release: bump `AppVersion.marketing` in `Sources/Portside/Support/AppVe
 
 ## Support
 
-Portside is free and open source. If it saves you a few SSH sessions, you can say thanks with a coffee:
+Portside is free and open source. If it saves you a few SSH sessions, the easiest way to help is a
+**[star on GitHub](https://github.com/Mac2100/Portside)** — it costs nothing and helps other people
+find the app. If you'd rather say thanks with a coffee:
 
 <a href="https://www.buymeacoffee.com/Mac2100" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
