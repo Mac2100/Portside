@@ -177,7 +177,9 @@ struct TLSIdentity {
     static func load(certsDirectory: URL) throws -> TLSIdentity {
         let ca = try certificate(fromPEMFile: certsDirectory.appendingPathComponent("ca.pem"))
         let cert = try certificate(fromPEMFile: certsDirectory.appendingPathComponent("cert.pem"))
-        let key = try privateKey(fromPEMFile: certsDirectory.appendingPathComponent("key.pem"))
+        // Parsed for validation (clear error messages for bad files) even
+        // though the import below reads the PEM directly.
+        _ = try privateKey(fromPEMFile: certsDirectory.appendingPathComponent("key.pem"))
 
         let label = "Portside Docker Client"
 
@@ -201,13 +203,15 @@ struct TLSIdentity {
         ]
         let certStatus = SecItemAdd(certAdd as CFDictionary, nil)
 
-        let keyAdd: [String: Any] = [
-            kSecClass as String: kSecClassKey,
-            kSecValueRef as String: key,
-            kSecAttrLabel as String: label,
-            kSecAttrIsPermanent as String: true
-        ]
-        let keyStatus = SecItemAdd(keyAdd as CFDictionary, nil)
+        // SecItemAdd for private keys goes through the data-protection
+        // keychain, which rejects apps without a provisioning entitlement
+        // (errSecMissingEntitlement, -34018) — and Portside's release builds
+        // are ad-hoc signed. The legacy file-keychain import has no such
+        // requirement, so the key goes into the login keychain via
+        // SecItemImport instead.
+        let keyStatus = importPrivateKeyIntoDefaultKeychain(
+            pemFileURL: certsDirectory.appendingPathComponent("key.pem")
+        )
 
         // Preferred path: let the Security framework find the key matching
         // this certificate and mint the identity.
@@ -244,6 +248,37 @@ struct TLSIdentity {
             + "(cert: \(certStatus), key: \(keyStatus), pair: \(pairStatus)). "
             + "Open Keychain Access, delete any \"Portside Docker Client\" items in the login keychain, and re-test."
         )
+    }
+
+    /// Imports the private key PEM into the default (login) keychain via the
+    /// legacy `SecItemImport` API. Unlike `SecItemAdd`, this path works for
+    /// ad-hoc-signed apps; the ACL grants this app access to the key.
+    private static func importPrivateKeyIntoDefaultKeychain(pemFileURL: URL) -> OSStatus {
+        guard let pemData = try? Data(contentsOf: pemFileURL) else {
+            return errSecIO
+        }
+        var keychain: SecKeychain?
+        let defaultStatus = SecKeychainCopyDefault(&keychain)
+        guard defaultStatus == errSecSuccess, let keychain else {
+            return defaultStatus
+        }
+        var format = SecExternalFormat.formatUnknown
+        var itemType = SecExternalItemType.itemTypePrivateKey
+        var params = SecItemImportExportKeyParameters()
+        params.version = UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION)
+        params.flags = SecKeyImportExportFlags(rawValue: 0)
+        let status = SecItemImport(
+            pemData as CFData,
+            ".pem" as CFString,
+            &format,
+            &itemType,
+            [],
+            &params,
+            keychain,
+            nil
+        )
+        // The key from a previous import is the same key — pairing will find it.
+        return status == errSecDuplicateItem ? errSecSuccess : status
     }
 
     /// Verifies a server trust chain against the imported CA, waiving only the
