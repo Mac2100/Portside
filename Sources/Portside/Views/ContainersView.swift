@@ -15,8 +15,36 @@ struct ContainersView: View {
     @State private var editTarget: ContainerSummary?
     @State private var confirmAction: PendingAction?
     @State private var confirmRemove: PendingRemove?
+    @AppStorage("containerSortKey") private var sortKeyRaw = "name"
+    @AppStorage("containerSortAscending") private var sortAscending = true
 
     enum ViewMode: String { case grid, list }
+
+    enum SortKey: String, CaseIterable {
+        case name, state, cpu, memory, created
+
+        var label: String {
+            switch self {
+            case .name: return "Name"
+            case .state: return "State"
+            case .cpu: return "CPU"
+            case .memory: return "Memory"
+            case .created: return "Age"
+            }
+        }
+    }
+
+    private var sortKey: SortKey { SortKey(rawValue: sortKeyRaw) ?? .name }
+
+    private func setSort(_ key: SortKey) {
+        if sortKey == key {
+            sortAscending.toggle()
+        } else {
+            sortKeyRaw = key.rawValue
+            // Metrics read best big-first; names read best A-first.
+            sortAscending = (key == .name || key == .state)
+        }
+    }
 
     struct PendingAction: Identifiable {
         let id = UUID()
@@ -106,6 +134,29 @@ struct ContainersView: View {
             Toggle("Running only", isOn: Binding(get: { !showAll }, set: { showAll = !$0 }))
                 .toggleStyle(.checkbox)
                 .font(.system(size: 12))
+            Text(summary)
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+            if view == .grid {
+                Menu {
+                    ForEach(SortKey.allCases, id: \.self) { key in
+                        Button {
+                            setSort(key)
+                        } label: {
+                            if sortKey == key {
+                                Label(key.label, systemImage: sortAscending ? "chevron.up" : "chevron.down")
+                            } else {
+                                Text(key.label)
+                            }
+                        }
+                    }
+                } label: {
+                    Label("Sort", systemImage: "arrow.up.arrow.down")
+                        .font(.system(size: 11))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+            }
             Spacer()
             Button {
                 composeSheet = true
@@ -139,6 +190,12 @@ struct ContainersView: View {
 
     // MARK: - Content
 
+    private var summary: String {
+        let running = appState.containers.filter(\.isRunning).count
+        let stopped = appState.containers.count - running
+        return "\(running) running · \(stopped) stopped"
+    }
+
     private var visible: [ContainerSummary] {
         var list = appState.containers
         if !showAll { list = list.filter(\.isRunning) }
@@ -149,7 +206,35 @@ struct ContainersView: View {
                     || ($0.Image ?? "").localizedCaseInsensitiveContains(search)
             }
         }
-        return list.sorted { $0.name < $1.name }
+        return sorted(list)
+    }
+
+    private func sorted(_ list: [ContainerSummary]) -> [ContainerSummary] {
+        func cpu(_ c: ContainerSummary) -> Double {
+            appState.metrics.first { $0.id == c.Id }?.cpu ?? -1
+        }
+        func mem(_ c: ContainerSummary) -> Int64 {
+            appState.metrics.first { $0.id == c.Id }?.memUsed ?? -1
+        }
+        // Running first, then restarting/paused, then the rest.
+        func stateRank(_ c: ContainerSummary) -> Int {
+            c.isRunning ? 0 : (c.isRestarting || c.isPaused ? 1 : 2)
+        }
+        // Every key sorts ascending here; the flag reverses at the end.
+        let base: [ContainerSummary]
+        switch sortKey {
+        case .name:
+            base = list.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .state:
+            base = list.sorted { (stateRank($0), $0.name) < (stateRank($1), $1.name) }
+        case .cpu:
+            base = list.sorted { (cpu($0), $0.name) < (cpu($1), $1.name) }
+        case .memory:
+            base = list.sorted { (mem($0), $0.name) < (mem($1), $1.name) }
+        case .created:
+            base = list.sorted { ($0.Created ?? 0) < ($1.Created ?? 0) }
+        }
+        return sortAscending ? base : Array(base.reversed())
     }
 
     /// Groups in display order: manual groups and stacks sorted by name, then Ungrouped.
@@ -197,11 +282,15 @@ struct ContainersView: View {
 
     private var emptyState: some View {
         VStack(spacing: 8) {
-            Image(systemName: "shippingbox")
+            Image(systemName: search.isEmpty ? "shippingbox" : "magnifyingglass")
                 .font(.system(size: 36, weight: .light))
                 .foregroundStyle(.tertiary)
-            Text("No containers")
+            Text(search.isEmpty ? "No containers" : "No containers match \"\(search)\"")
                 .font(.headline)
+            if !search.isEmpty {
+                Button("Clear filter") { search = "" }
+                    .controlSize(.small)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 60)
@@ -225,7 +314,11 @@ struct ContainersView: View {
                 }
             }
         } else {
-            VStack(spacing: 1) {
+            VStack(spacing: 3) {
+                ContainerListHeader(
+                    sortKey: sortKey, ascending: sortAscending,
+                    onSort: { setSort($0) }
+                )
                 ForEach(members) { container in
                     ContainerRow(
                         container: container,
@@ -557,7 +650,64 @@ struct ContainerCard: View {
     }
 }
 
-// MARK: - List row
+// MARK: - List row (table layout)
+
+/// Shared column geometry so the header and rows stay aligned.
+enum ContainerColumns {
+    static let state: CGFloat = 96
+    static let cpu: CGFloat = 58
+    static let memory: CGFloat = 76
+    static let ports: CGFloat = 150
+    static let age: CGFloat = 56
+    static let actions: CGFloat = 158
+}
+
+struct ContainerListHeader: View {
+    var sortKey: ContainersView.SortKey
+    var ascending: Bool
+    var onSort: (ContainersView.SortKey) -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Color.clear.frame(width: 16)   // checkbox gutter
+            header("Name", key: .name)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            header("State", key: .state)
+                .frame(width: ContainerColumns.state, alignment: .leading)
+            header("CPU", key: .cpu)
+                .frame(width: ContainerColumns.cpu, alignment: .trailing)
+            header("Memory", key: .memory)
+                .frame(width: ContainerColumns.memory, alignment: .trailing)
+            Text("PORTS")
+                .frame(width: ContainerColumns.ports, alignment: .leading)
+            header("Age", key: .created)
+                .frame(width: ContainerColumns.age, alignment: .trailing)
+            Color.clear.frame(width: ContainerColumns.actions)
+        }
+        .font(.system(size: 9.5, weight: .semibold))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+    }
+
+    private func header(_ label: String, key: ContainersView.SortKey) -> some View {
+        Button {
+            onSort(key)
+        } label: {
+            HStack(spacing: 3) {
+                Text(label.uppercased())
+                if sortKey == key {
+                    Image(systemName: ascending ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 7, weight: .bold))
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(sortKey == key ? Color.accentColor : Color.secondary)
+        .help("Sort by \(label.lowercased())")
+    }
+}
 
 struct ContainerRow: View {
     @EnvironmentObject private var appState: AppState
@@ -568,50 +718,99 @@ struct ContainerRow: View {
     var onCustomize: () -> Void
     var onEdit: () -> Void
 
+    @State private var hovering = false
+
     private var metrics: ContainerMetrics? { appState.metrics.first { $0.id == container.Id } }
+    private var custom: ContainerCustomization { appState.customization(of: container.name) }
+    private var tint: Color { ContainerTint.color(for: container, custom: custom) }
+    private var isOpen: Bool { appState.selectedContainerID == container.Id }
 
     var body: some View {
         HStack(spacing: 10) {
             Toggle("", isOn: Binding(get: { selected }, set: { _ in onToggleSelect() }))
                 .toggleStyle(.checkbox)
                 .labelsHidden()
+                .opacity(hovering || selected ? 1 : 0.25)
+                .frame(width: 16)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(appState.displayName(of: container))
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(1)
-                Text(container.shortImage)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(tint.gradient)
+                    .frame(width: 24, height: 24)
+                    .overlay {
+                        Text(custom.icon ?? ContainerTint.monogram(for: container.name))
+                            .font(.system(size: custom.icon == nil ? 11 : 12, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(appState.displayName(of: container))
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                    Text(container.shortImage)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
-            .frame(width: 190, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             StateBadge(container: container)
-                .frame(width: 100, alignment: .leading)
+                .frame(width: ContainerColumns.state, alignment: .leading)
 
-            Text(Format.relative(container.Created))
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(width: 70, alignment: .leading)
+            Text(container.isRunning ? metrics.map { String(format: "%.1f%%", $0.cpu) } ?? "…" : "—")
+                .frame(width: ContainerColumns.cpu, alignment: .trailing)
+                .foregroundStyle(metricStyle)
+            Text(container.isRunning ? metrics.map { Format.bytes($0.memUsed) } ?? "…" : "—")
+                .frame(width: ContainerColumns.memory, alignment: .trailing)
+                .foregroundStyle(metricStyle)
 
-            Text(ports)
-                .font(.system(size: 11, design: .monospaced))
+            Text(ports.isEmpty ? "—" : ports)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .frame(minWidth: 110, alignment: .leading)
+                .truncationMode(.tail)
+                .frame(width: ContainerColumns.ports, alignment: .leading)
+                .help(ports)
 
-            Group {
-                Text(container.isRunning ? metrics.map { String(format: "%.1f%%", $0.cpu) } ?? "…" : "—")
-                    .frame(width: 56, alignment: .trailing)
-                Text(container.isRunning ? metrics.map { Format.bytes($0.memUsed) } ?? "…" : "—")
-                    .frame(width: 70, alignment: .trailing)
-            }
-            .font(.system(size: 11, design: .monospaced))
+            Text(Format.relative(container.Created).replacingOccurrences(of: " ago", with: ""))
+                .foregroundStyle(.tertiary)
+                .frame(width: ContainerColumns.age, alignment: .trailing)
 
-            Spacer()
+            actionCluster
+                .frame(width: ContainerColumns.actions, alignment: .trailing)
+        }
+        .font(.system(size: 11, design: .monospaced))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(isOpen ? AnyShapeStyle(Color.accentColor.opacity(0.08))
+                             : AnyShapeStyle(.background.opacity(hovering ? 0.9 : 0.5)))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .strokeBorder(
+                    selected ? tint : (isOpen ? Color.accentColor.opacity(0.5) : Color.primary.opacity(hovering ? 0.14 : 0.07)),
+                    lineWidth: selected ? 1.5 : 1
+                )
+        )
+        .onHover { hovering = $0 }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            appState.selectedContainerID = isOpen ? nil : container.Id
+        }
+        .contextMenu { ContainerContextMenu(container: container, onCustomize: onCustomize, onEdit: onEdit) }
+        .animation(.easeOut(duration: 0.12), value: hovering)
+    }
 
-            HStack(spacing: 4) {
+    private var metricStyle: HierarchicalShapeStyle {
+        container.isRunning ? .primary : .tertiary
+    }
+
+    /// Actions live in a fixed-width cluster and only fully appear on hover,
+    /// so rows stay scannable instead of reading as a wall of buttons.
+    private var actionCluster: some View {
+        HStack(spacing: 4) {
+            if hovering || isOpen {
                 if container.isRunning {
                     rowIcon("stop.fill", help: "Stop") {
                         Task { await appState.perform(.stop, on: container) }
@@ -637,26 +836,19 @@ struct ContainerRow: View {
                         appState.openWebUI(for: container)
                     }
                 }
+            } else {
+                // Collapsed hint: a subtle status-appropriate glyph keeps the
+                // column visually present without the button noise.
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.quaternary)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(
-            selected ? Color.accentColor.opacity(0.08) : Color.clear,
-            in: RoundedRectangle(cornerRadius: 8)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            appState.selectedContainerID =
-                appState.selectedContainerID == container.Id ? nil : container.Id
-        }
-        .contextMenu { ContainerContextMenu(container: container, onCustomize: onCustomize, onEdit: onEdit) }
     }
 
     private var ports: String {
         (container.Ports ?? [])
-            .filter { $0.PublicPort != nil }
-            .map { "\($0.PublicPort ?? 0)→\($0.PrivatePort)" }
+            .compactMap { port in port.PublicPort.map { "\($0)→\(port.PrivatePort)" } }
             .sorted()
             .joined(separator: ", ")
     }
@@ -665,6 +857,7 @@ struct ContainerRow: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 10))
+                .frame(width: 16, height: 16)
         }
         .buttonStyle(.borderless)
         .help(help)
