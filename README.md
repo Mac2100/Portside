@@ -85,6 +85,12 @@ Every push and pull request builds the app and uploads a DMG artifact via GitHub
 
 To cut a release: bump `AppVersion.marketing` in `Sources/Portside/Support/AppVersion.swift`, then tag the commit `v<version>` and push the tag.
 
+## Support
+
+Portside is free and open source. If it saves you a few SSH sessions, you can say thanks with a coffee:
+
+<a href="https://www.buymeacoffee.com/Mac2100" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
 ## License
 
 [MIT](LICENSE)

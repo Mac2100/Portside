@@ -878,6 +878,9 @@ struct AboutSettings: View {
                 }
             }
 
+            BuyMeACoffeeButton()
+                .padding(.top, 4)
+
             if case .checking = appState.updates.status {
                 ProgressView().controlSize(.small)
             }

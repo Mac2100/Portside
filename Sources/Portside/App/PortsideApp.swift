@@ -23,6 +23,7 @@ struct PortsideApp: App {
                 Button("Check for Updates…") {
                     Task { await appState.updates.check(userInitiated: true) }
                 }
+                Link("Buy Me a Coffee…", destination: BuyMeACoffee.url)
             }
             CommandGroup(after: .toolbar) {
                 Button("Command Palette…") {
